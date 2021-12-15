@@ -3,12 +3,14 @@ package authorization
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/spf13/viper"
 	"inter-protocol-auth-server/internal/auth/claims"
 	"inter-protocol-auth-server/pkg/auth/credential"
 	"inter-protocol-auth-server/pkg/auth/repository"
+	"inter-protocol-auth-server/pkg/rsa"
 	"inter-protocol-auth-server/pkg/sendsmtp"
 	"time"
 )
@@ -45,7 +47,12 @@ func (a *Authorizer) SignUp(ctx context.Context, user credential.ICredential) er
 	pwd.Write([]byte(a.hashSalt))
 	user.SetPassword(fmt.Sprintf("%x", pwd.Sum(nil)))
 
-	a.sender.Send(user.GetEmail(),
+	publicKeyPath, privateKeyPath := viper.GetString("rsa.public_key"), viper.GetString("rsa.private_key")
+	privateKey := rsa.GenerateKeyPair(publicKeyPath, privateKeyPath)
+
+	user.SetEmail(rsa.Encrypt(privateKey, user.GetEmail()))
+
+	a.sender.Send(rsa.Decrypt(privateKey, user.GetEmail()),
 		"Sign Up",
 		"Hello, "+user.GetLogin()+"!"+"\n"+
 			"Thank you for registering with our service.")
@@ -72,5 +79,21 @@ func (a *Authorizer) SignIn(ctx context.Context, user credential.ICredential) (s
 		Username: user.GetLogin(),
 	})
 
-	return token.SignedString(a.signingKey)
+	tokenSigned, err := token.SignedString(a.signingKey)
+	if err != nil {
+		return "", err
+	}
+
+	publicKeyPath, privateKeyPath := viper.GetString("rsa.public_key"), viper.GetString("rsa.private_key")
+	privateKey := rsa.GenerateKeyPair(publicKeyPath, privateKeyPath)
+
+	// user.SetEmail(rsa.Encrypt(privateKey, user.GetEmail()))
+
+	result := map[string]string{
+		"token": tokenSigned,
+		"email": rsa.Decrypt(privateKey, user.GetEmail()),
+	}
+
+	jsonBytes, err := json.Marshal(result)
+	return string(jsonBytes), err
 }
