@@ -30,6 +30,16 @@ func (h *handler) signUp(c *gin.Context) {
 		return
 	}
 
+	c.JSON(http.StatusOK, newResponse(STATUS_OK, "confirm user email"))
+}
+
+func (h *handler) confirm(c *gin.Context) {
+	token := c.Param("token")
+	if err := h.autorizer.Confirm(c.Request.Context(), token); err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, newResponse(STATUS_ERROR, err.Error()))
+		return
+	}
+
 	c.JSON(http.StatusOK, newResponse(STATUS_OK, "user created successfully"))
 }
 

@@ -11,18 +11,49 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/google/uuid"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type UserRepository struct {
-	db *mongo.Collection
+	db            *mongo.Collection
+	confirmations map[credential.ICredential]uuid.UUID
 }
 
 func NewUserRepository(db *mongo.Database, collection string) repository.IRepository {
 	return &UserRepository{
-		db: db.Collection(collection),
+		db:            db.Collection(collection),
+		confirmations: make(map[credential.ICredential]uuid.UUID),
 	}
+}
+
+func (r *UserRepository) GetConfirmationToken(user credential.ICredential) uuid.UUID {
+	token, ok := r.confirmations[user]
+	if !ok {
+		token = uuid.New()
+		r.confirmations[user] = token
+	}
+
+	return token
+}
+
+func (r *UserRepository) SetConfirmationToken(token string) (credential.ICredential, bool) {
+	var user credential.ICredential = nil
+	for key, value := range r.confirmations {
+		if value.String() == token {
+			user = key
+		}
+	}
+
+	if user == nil {
+		return nil, false
+	}
+
+	defer delete(r.confirmations, user)
+
+	return user, true
 }
 
 func (r *UserRepository) Insert(ctx context.Context, user credential.ICredential) error {

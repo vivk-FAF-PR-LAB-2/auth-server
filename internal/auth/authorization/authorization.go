@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/spf13/viper"
@@ -52,10 +53,21 @@ func (a *Authorizer) SignUp(ctx context.Context, user credential.ICredential) er
 
 	user.SetEmail(rsa.Encrypt(privateKey, user.GetEmail()))
 
+	id := a.repo.GetConfirmationToken(user)
 	a.sender.Send(rsa.Decrypt(privateKey, user.GetEmail()),
 		"Sign Up",
 		"Hello, "+user.GetLogin()+"!"+"\n"+
-			"Thank you for registering with our service.")
+			"Thank you for registering with our service.\n"+
+			"Confirmation: $URL/auth/confirm/"+id.String())
+
+	return nil
+}
+
+func (a *Authorizer) Confirm(ctx context.Context, token string) error {
+	user, ok := a.repo.SetConfirmationToken(token)
+	if !ok {
+		return errors.New("Token does not exist.")
+	}
 
 	return a.repo.Insert(ctx, user)
 }
